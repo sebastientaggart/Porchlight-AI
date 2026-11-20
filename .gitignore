@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+backups/
+__pycache__/
+obsidian-notes
+obsidian-notes/

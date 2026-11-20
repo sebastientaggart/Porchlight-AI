@@ -1,0 +1,207 @@
+# Porchlight-AI
+# Kid device -> Open WebUI (chat UI, per-kid accounts, parent can read chats)
+#            -> LiteLLM (per-kid keys, budgets, independent audit log)
+#            -> model provider (Anthropic by default)
+#
+# Image tags are pinned. Upgrade deliberately, then re-run docs/setup.md step 7.
+#
+# Optional profiles, via COMPOSE_PROFILES in .env (e.g. guard,search):
+# - guard: a local Llama Guard (Ollama) that the parent alert filter uses as a
+#   classifier. See docs/setup.md step 8.
+# - search: SearXNG for web search (parents only). See docs/setup.md step 9.
+
+services:
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:v0.12.4
+    restart: unless-stopped
+    ports:
+      # Set OPENWEBUI_BIND=127.0.0.1 when a reverse proxy on this host does TLS.
+      - "${OPENWEBUI_BIND:-0.0.0.0}:${OPENWEBUI_PORT:-3000}:8080"
+    volumes:
+      - openwebui-data:/app/backend/data
+    environment:
+      # This file is the source of truth for Open WebUI's settings. With
+      # persistent config off, every setting below (and every admin setting
+      # left at its default) is re-applied on each start; changes made in the
+      # admin UI work until the next restart, then revert. Users, groups,
+      # group permissions, model presets, and functions live in the database
+      # and are unaffected. See docs/features.md.
+      ENABLE_PERSISTENT_CONFIG: "false"
+
+      WEBUI_NAME: "${WEBUI_NAME:-Family AI}"
+      WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:?set in .env}"
+
+      # No self-signup. Parent creates every account.
+      ENABLE_SIGNUP: "false"
+      DEFAULT_USER_ROLE: "pending"
+
+      # The whole point: parent (admin) can read kids' chats.
+      ENABLE_ADMIN_CHAT_ACCESS: "true"
+
+      # --- Connections ------------------------------------------------------
+      # Only LiteLLM, one connection per LiteLLM key (yours, then each kid),
+      # defined in .env. No direct provider connections, and no Ollama models
+      # in the chat UI (the guard profile's Ollama is for the alert filter).
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      OPENAI_API_BASE_URLS: "${OPENAI_API_BASE_URLS:-}"
+      OPENAI_API_KEYS: "${OPENAI_API_KEYS:-}"
+      OPENAI_API_CONFIGS: "${OPENAI_API_CONFIGS:-}"
+      # Users can't add their own AI endpoints (the browser would talk to them
+      # directly, bypassing LiteLLM).
+      ENABLE_DIRECT_CONNECTIONS: "false"
+      # Pass the user's identity to LiteLLM (the audit log's "who" column).
+      ENABLE_FORWARD_USER_INFO_HEADERS: "true"
+
+      # --- Default permissions = what kids get -----------------------------
+      # Admins (parents) have everything regardless. Groups can only ADD to
+      # these (permissions are OR'd), so grant extras per kid group in
+      # Admin > Users > Groups. Reasons for each: docs/features.md.
+      # Keep the record intact
+      USER_PERMISSIONS_CHAT_DELETE: "false"
+      USER_PERMISSIONS_CHAT_DELETE_MESSAGE: "false"
+      USER_PERMISSIONS_CHAT_EDIT: "false"
+      USER_PERMISSIONS_CHAT_TEMPORARY: "false"
+      USER_PERMISSIONS_FEATURES_NOTES: "false"
+      # No kid-written system prompts (chat controls, params, folder prompts)
+      USER_PERMISSIONS_CHAT_CONTROLS: "false"
+      USER_PERMISSIONS_CHAT_SYSTEM_PROMPT: "false"
+      USER_PERMISSIONS_CHAT_PARAMS: "false"
+      USER_PERMISSIONS_FEATURES_FOLDERS: "false"
+      # Tool, not a friend: no voice, no memories
+      USER_PERMISSIONS_CHAT_STT: "false"
+      USER_PERMISSIONS_CHAT_TTS: "false"
+      USER_PERMISSIONS_CHAT_CALL: "false"
+      USER_PERMISSIONS_FEATURES_MEMORIES: "false"
+      # Scheduled prompts that run unattended on the kid's key (off upstream
+      # too; pinned in case that changes)
+      USER_PERMISSIONS_FEATURES_AUTOMATIONS: "false"
+      # No fetching arbitrary URLs; uploads of their own files are fine
+      USER_PERMISSIONS_CHAT_WEB_UPLOAD: "false"
+      USER_PERMISSIONS_CHAT_FILE_UPLOAD: "true"
+      # Web search: parents only for now (docs/plans/web-search.md, phase 3).
+      USER_PERMISSIONS_FEATURES_WEB_SEARCH: "false"
+      # Not configured (TODO.md)
+      USER_PERMISSIONS_FEATURES_IMAGE_GENERATION: "false"
+      # Runs in the kid's browser (Pyodide), not on the server
+      USER_PERMISSIONS_FEATURES_CODE_INTERPRETER: "true"
+
+      # --- Features -------------------------------------------------------
+      # Code: browser-sandboxed Pyodide only. Never Jupyter for kids (that
+      # runs code on the server).
+      ENABLE_CODE_EXECUTION: "true"
+      CODE_EXECUTION_ENGINE: "pyodide"
+      ENABLE_CODE_INTERPRETER: "true"
+      CODE_INTERPRETER_ENGINE: "pyodide"
+      # Web search through the `search` profile's SearXNG (strict safe search,
+      # locked). Set ENABLE_WEB_SEARCH=true in .env alongside the profile.
+      # Parents only: kids need USER_PERMISSIONS_FEATURES_WEB_SEARCH, which
+      # stays off. See docs/setup.md step 9.
+      ENABLE_WEB_SEARCH: "${ENABLE_WEB_SEARCH:-false}"
+      WEB_SEARCH_ENGINE: "searxng"
+      SEARXNG_QUERY_URL: "http://searxng:8080/search"
+      WEB_SEARCH_RESULT_COUNT: "5"
+      ENABLE_IMAGE_GENERATION: "false"
+      # Document context goes in the user message, not the system message
+      # (the default, pinned because the age prompt hook owns the system slot).
+      RAG_SYSTEM_CONTEXT: "false"
+      # Each sub-agent is a full agent loop (up to 20 in parallel), with no
+      # per-user permission. Off.
+      ENABLE_SUBAGENTS: "false"
+      # No links or uploads to openwebui.com.
+      ENABLE_COMMUNITY_SHARING: "false"
+
+      # Background tasks run on the kid's model and key: extra spend and audit
+      # log noise. Titles are kept because they make chats skimmable.
+      ENABLE_TAGS_GENERATION: "false"
+      ENABLE_FOLLOW_UP_GENERATION: "false"
+      ENABLE_SEARCH_QUERY_GENERATION: "false"
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.106.6
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    # Published on the host's loopback only, for you (admin UI at /ui). Never
+    # on the LAN: kids never talk to this directly. On a headless server, use
+    # an SSH tunnel: ssh -L 4000:localhost:4000 <server>
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/age_prompt.py:/app/age_prompt.py:ro
+      - ./prompts:/app/prompts:ro
+    environment:
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:?set in .env}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?set in .env}"
+      # Optional. See docs/openrouter.md.
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      # Parents' models use their own provider keys. See docs/setup.md step 2.
+      ANTHROPIC_API_KEY_PARENTS: "${ANTHROPIC_API_KEY_PARENTS:-}"
+      OPENROUTER_API_KEY_PARENTS: "${OPENROUTER_API_KEY_PARENTS:-}"
+      DATABASE_URL: "postgresql://litellm:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/litellm"
+      # LiteLLM cuts the middle out of any logged string longer than this
+      # (default 2048), which would gut long essays and replies in the audit log.
+      MAX_STRING_LENGTH_PROMPT_IN_DB: "100000"
+      # Admin UI login. LiteLLM reads UI_USERNAME/UI_PASSWORD; without them it
+      # falls back to admin + the master key.
+      UI_USERNAME: "${ADMIN_UI_USERNAME:?set in .env}"
+      UI_PASSWORD: "${ADMIN_UI_PASSWORD:?set in .env}"
+    # Healthy once it can take requests (after DB migrations), so
+    # `docker compose up -d --wait` and the scripts don't race startup.
+    # The image has python3 but no curl.
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+      start_interval: 2s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16.15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env}"
+      POSTGRES_DB: litellm
+    volumes:
+      - litellm-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      retries: 10
+
+  # Optional local classifier for openwebui/functions/parent_alert.py.
+  # After first start: docker compose exec ollama ollama pull llama-guard3:1b
+  ollama:
+    image: ollama/ollama:0.40.13
+    profiles: ["guard"]
+    restart: unless-stopped
+    expose:
+      - "11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  # Optional web search backend for Open WebUI (parents only by default).
+  # Internal only: no published port. Config: searxng/settings.yml.
+  searxng:
+    image: searxng/searxng:2026.11.5-adbf160ff
+    profiles: ["search"]
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      SEARXNG_SECRET: "${SEARXNG_SECRET:-}"
+
+volumes:
+  openwebui-data:
+  litellm-db:
+  ollama-data:

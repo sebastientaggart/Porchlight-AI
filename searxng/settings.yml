@@ -1,0 +1,50 @@
+# SearXNG for Open WebUI's web search. Internal only (no published port).
+# Plan and reasoning: docs/plans/web-search.md.
+#
+# Safe search is locked to strict here because Open WebUI asks for moderate
+# and nothing else enforces it. Only engines that honour safe search are kept.
+
+#
+# Tested on this image tag (2026-11-19), from a home IP:
+# - bing: works. Carries almost everything.
+# - duckduckgo: works, with intermittent CAPTCHAs.
+# - google: "access denied". brave: every result link broken (http:///go/...).
+#   startpage: doesn't load. All left out; retest after upgrading the image.
+use_default_settings:
+  engines:
+    keep_only:
+      - bing
+      - duckduckgo
+      # No safe search support, but low risk.
+      - wikipedia
+
+# keep_only keeps an engine's default state; some are off by default.
+engines:
+  - name: bing
+    disabled: false
+  - name: wikipedia
+    disabled: false
+
+server:
+  # Overridden by SEARXNG_SECRET from .env. SearXNG refuses to start with
+  # this placeholder, which is the point.
+  secret_key: "ultrasecretkey"
+  # Only Open WebUI talks to this instance, so no bot protection (it would
+  # also need Valkey).
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  # 0 off, 1 moderate, 2 strict.
+  safe_search: 2
+  # Open WebUI reads JSON.
+  formats:
+    - html
+    - json
+  autocomplete: ""
+
+preferences:
+  # Ignore the request's own safesearch value (Open WebUI sends 1).
+  lock:
+    - safesearch

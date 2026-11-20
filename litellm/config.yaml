@@ -1,0 +1,91 @@
+# LiteLLM is the audit layer. Everything the kids send and receive is logged
+# here, in a database the kids' accounts cannot touch.
+
+model_list:
+  # Default: fast, cheap, plenty smart for homework and curiosity.
+  - model_name: claude-kids
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Optional: stronger model for older kids / harder schoolwork.
+  - model_name: claude-kids-plus
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # --- OpenRouter for kids (optional) -------------------------------------
+  # Needs OPENROUTER_API_KEY in .env. Keep this list identical to the model
+  # allowlist on that key's guardrail. Setup and privacy: docs/openrouter.md.
+  #
+  # Check the model provider's terms before adding one for kids. Google's
+  # Gemini API terms forbid apps "likely to be accessed by individuals under
+  # the age of 18", so no Gemini here. Anthropic is the only provider in this
+  # stack with an explicit path for minors. Template:
+  # - model_name: <name>-kids
+  #   litellm_params:
+  #     model: openrouter/<provider>/<model>
+  #     api_key: os.environ/OPENROUTER_API_KEY
+  #     # Only route to providers that don't train on or retain prompts.
+  #     extra_body:
+  #       provider: {data_collection: deny, zdr: true}
+  #   model_info:
+  #     # USD per token, used for budgets when OpenRouter's reported cost is
+  #     # missing. From openrouter.ai/models; update if it changes.
+  #     input_cost_per_token: <price per million / 1,000,000>
+  #     output_cost_per_token: <price per million / 1,000,000>
+
+  # --- Parents -----------------------------------------------------------
+  # Not on any kid key, so kids can't reach these. Separate provider keys give
+  # parent spend its own limits and keep the kids' OpenRouter allowlist
+  # kid-only. Set *_PARENTS to the same value as the kid key if you don't care.
+  # See docs/setup.md step 2.
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY_PARENTS
+
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY_PARENTS
+
+  # OpenRouter for parents: the parents' key, with its own limit and
+  # guardrail allowlist (docs/openrouter.md).
+  - model_name: gemini-flash
+    litellm_params:
+      model: openrouter/google/gemini-3.5-flash-lite
+      api_key: os.environ/OPENROUTER_API_KEY_PARENTS
+      # Only route to providers that don't train on or retain prompts.
+      extra_body:
+        provider: {data_collection: deny, zdr: true}
+    model_info:
+      # USD per token, used for budgets when OpenRouter's reported cost is
+      # missing. From openrouter.ai/models on 2026-10-29; update if it changes.
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000025
+
+  # Self-hosted folks: add a local model the same way, e.g.
+  # - model_name: local-kids
+  #   litellm_params:
+  #     model: ollama/llama3.1
+  #     api_base: http://ollama:11434
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  # Keep full prompt and response text in the spend logs. This is the
+  # tamper-resistant copy of every conversation. The prompt lands in the
+  # proxy_server_request column; see MAX_STRING_LENGTH_PROMPT_IN_DB in
+  # docker-compose.yml for the truncation limit.
+  store_prompts_in_spend_logs: true
+  # Record which Open WebUI user sent each request (the end_user column), from
+  # the header Open WebUI forwards. Tells parents apart on the shared key.
+  user_header_mappings:
+    - header_name: X-OpenWebUI-User-Email
+      litellm_user_role: customer
+
+litellm_settings:
+  drop_params: true
+  # Injects the age prompt for kid keys. See age_prompt.py.
+  callbacks: age_prompt.handler
