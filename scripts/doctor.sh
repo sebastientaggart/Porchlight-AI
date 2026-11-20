@@ -271,7 +271,13 @@ try:
             print(f"warn|{label}: base model {m['base_model_id']} isn't from any connection")
         else:
             wrong = [n for n in group_names if owner.lower() not in n.lower()]
-            if wrong:
+            base_groups = {g["principal_id"] for g in grants.get(m["base_model_id"], [])
+                           if g["principal_type"] == "group"}
+            blocked = [groups[g["principal_id"]]["name"] for g in gs if g["principal_type"] == "group"
+                       and g["principal_id"] in groups and g["principal_id"] not in base_groups]
+            if blocked:
+                print(f"fail|{label}: {', '.join(blocked)} can't use base model {m['base_model_id']}, so chats fail with 'Model not found' (Admin Panel > Settings > Models > Access)")
+            elif wrong:
                 print(f"warn|{label} is shared with {', '.join(wrong)}: they'd chat with {owner}'s age, budget, and name")
             else:
                 print(f"ok|{label} shared with {', '.join(group_names)}")

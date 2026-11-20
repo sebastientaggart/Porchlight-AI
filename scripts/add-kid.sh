@@ -101,6 +101,9 @@ Done in LiteLLM and .env. Now in Open WebUI, as an admin (make open):
        System prompt: leave empty (the age prompt comes from LiteLLM)
        Suggestions:   from openwebui/presets.md
        Access:        group $NAME only, never public
-  4. Admin Panel > Users > Groups > $NAME > Default Model: $NAME's AI Helper
-  5. make doctor, then log in as $NAME in a private window (docs/setup.md step 7).
+  4. Admin Panel > Settings > Models > $KID.$FIRST_MODEL
+       Access:        group $NAME only, never public (the preset needs it)
+       Menu:          Hide Model (tidies $NAME's list)
+  5. Admin Panel > Users > Groups > $NAME > Default Model: $NAME's AI Helper
+  6. make doctor, then log in as $NAME in a private window (docs/setup.md step 7).
 EOF

@@ -103,11 +103,13 @@ Workspace > Models > create one preset per kid:
 
 Then set it as the **Default Model** on the kid's group (Admin Panel > Users > Groups).
 
-Then in Admin > Settings > Models, hide the raw base models to tidy the list. Hiding is cosmetic; what actually protects them is access. Base models are admin-only by default, so leave their access private and never make one public, or any kid could call another kid's model (and key) by ID.
+Then give the kid's group access to the base model too: Admin Panel > Settings > Models > `alex.claude-kids` > Access > that kid's group only. Open WebUI checks access on the preset **and** the base model under it; base models are admin-only until given access, so without this the kid sees the preset but every message fails with "Model not found". Never make a base model public, or any kid could call another kid's model (and key) by ID.
+
+Hiding the raw base models (same page, the model's menu > Hide Model) tidies the kid's list. It's cosmetic; access is what protects them.
 
 ## 7. Verify as a kid
 
-First `make doctor` (or `./scripts/doctor.sh`): it catches the common mistakes, like a preset with no access entry or shared with the wrong kid. Then log in as each kid (private window). Confirm:
+First `make doctor` (or `./scripts/doctor.sh`): it catches the common mistakes, like a preset with no access entry, shared with the wrong kid, or on a base model the kid can't use. Then log in as each kid (private window). Confirm:
 - Only their preset is visible.
 - No delete or temporary chat option, and no system prompt field in chat Controls or Settings > General.
 - No microphone or voice-call button, and no Memories, Notes, or Folders.

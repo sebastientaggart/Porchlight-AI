@@ -46,11 +46,11 @@ Open WebUI's sidebar has **Workspace**. **Admin Panel** is in the menu under you
 
 **Change what kids see as their default model.** Admin Panel > Users > Groups > the kid's group > Default Model. Pick their preset.
 
-**Check what a kid can see.** Every preset and skill has an **Access** button. Each kid's preset should list only that kid's group. Never "Public" (any kid could use it, on someone else's key).
+**Check what a kid can see.** Every preset and skill has an **Access** button. Each kid's preset should list only that kid's group, and so should the base model under it (Admin Panel > Settings > Models). Never "Public" (any kid could use it, on someone else's key). A kid who sees a preset but gets "Model not found" is missing access to its base model; `make doctor` flags it.
 
 **Share a skill with a kid.** Workspace > Skills > Import Skills (or create one), then Access > add the kid's group. Kids load it by typing `$` in the chat box.
 
-**Hide the raw base models.** Admin Panel > Settings > Models > the model's menu > Hide Model. Cosmetic; access is what protects them.
+**Hide the raw base models.** Admin Panel > Settings > Models > the model's menu > Hide Model. Cosmetic; access is what protects them. Keep the kid's group on their base model's access: presets need it.
 
 **Search the web (parents).** Switch on Web Search in the chat box's Integrations menu, per chat. Without it the model doesn't get the search tools and will say it can't search. Kids don't have the option ([setup.md step 9](setup.md#9-web-search-for-parents-optional)).
 
