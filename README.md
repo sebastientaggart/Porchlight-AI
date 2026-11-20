@@ -39,11 +39,11 @@ This is the setup I run for my own family, shared as a reference architecture ra
 ## Quick start
 
 ```bash
-cp .env.example .env         # fill in keys and passwords
-docker compose up -d         # add --profile guard for the local Llama Guard
+cp .env.example .env && chmod 600 .env   # fill in keys and passwords (docs/setup.md step 1)
+docker compose up -d --wait              # optional services: COMPOSE_PROFILES in .env
 ```
 
-Then follow [docs/setup.md](docs/setup.md) (about 20 minutes) to create accounts, per-kid connections, and model presets.
+Then open `http://<host>:3000` and create your account right away: the first account becomes the admin, and until then anyone who can reach the port can take it. Follow [docs/setup.md](docs/setup.md) (about 20 minutes) for the rest: per-kid connections, accounts, and model presets. On Unraid, see [its notes](docs/setup.md#on-unraid-compose-manager).
 
 After that, `make help` lists everything you'll need later (adding a kid, reading the audit log, spending), and `make doctor` checks the whole setup and says what's wrong. The Makefile only wraps `scripts/`, which also run without `make`.
 

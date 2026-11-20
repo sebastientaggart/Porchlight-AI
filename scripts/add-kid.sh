@@ -6,6 +6,7 @@
 # Asks for anything missing. Example: ./scripts/add-kid.sh alex 2016-04-02 5 claude-kids
 set -euo pipefail
 cd "$(dirname "$0")/.."
+umask 077  # .env and its backups hold every key
 source scripts/lib.sh
 
 die() { echo "$*" >&2; exit 1; }
@@ -16,7 +17,7 @@ BUDGET="${3:-}"
 MODELS="${4:-}"
 
 [[ -f .env ]] || die "No .env yet. Start with docs/setup.md step 1."
-docker compose exec -T litellm true 2>/dev/null || die "LiteLLM isn't running. Start the stack first: make up"
+docker compose exec -T litellm true 2>/dev/null || die "LiteLLM isn't running. Start the stack first: docker compose up -d --wait"
 
 ask KID "Kid's name, lowercase (key alias and model prefix, e.g. alex)"
 KID=$(printf '%s' "$KID" | tr '[:upper:]' '[:lower:]')
@@ -55,7 +56,7 @@ urls = [u for u in value("OPENAI_API_BASE_URLS").split(";") if u]
 keys = [k for k in value("OPENAI_API_KEYS").split(";") if k]
 configs = json.loads(value("OPENAI_API_CONFIGS") or "{}")
 if not (len(urls) == len(keys) == len(configs)):
-    sys.exit(f"The connection lists in .env have different lengths ({len(urls)} URLs, {len(keys)} keys, {len(configs)} configs). Fix them first (make doctor).")
+    sys.exit(f"The connection lists in .env have different lengths ({len(urls)} URLs, {len(keys)} keys, {len(configs)} configs). Fix them first (./scripts/doctor.sh).")
 configs[str(len(keys))] = {"prefix_id": os.environ["KID"]}
 urls.append("http://litellm:4000/v1")
 keys.append(key)
@@ -69,13 +70,15 @@ if ! { printf '%s\n' "$KEY"; cat .env; } | docker compose exec -T -e KID="$KID" 
   rm -f .env.new
   die "Couldn't update .env (unchanged). The key $KID was created but isn't connected: delete it in the LiteLLM admin UI (Virtual Keys), fix .env, and run this again."
 fi
-mv .env.new .env
+# Copy over rather than mv, so .env keeps its permissions (it holds every key).
+cat .env.new > .env
+rm -f .env.new
 echo "Added connection $KID to .env (backup: $BAK)."
 
 echo "Restarting..."
-docker compose up -d --wait >/dev/null 2>&1 || die "Restart failed. Check: make logs"
+docker compose up -d --wait >/dev/null 2>&1 || die "Restart failed. Check: docker compose logs"
 
-docker compose exec -T -e KID="$KID" openwebui python3 - <<'PY' || die "The new connection doesn't work. Run: make doctor"
+docker compose exec -T -e KID="$KID" openwebui python3 - <<'PY' || die "The new connection doesn't work. Run: ./scripts/doctor.sh"
 import json, os, urllib.request
 key = os.environ["OPENAI_API_KEYS"].split(";")[-1]
 auth = {"Authorization": "Bearer " + key}
@@ -89,7 +92,7 @@ NAME="$(printf '%s' "${KID:0:1}" | tr '[:lower:]' '[:upper:]')${KID:1}"
 FIRST_MODEL="${MODELS%%,*}"
 cat <<EOF
 
-Done in LiteLLM and .env. Now in Open WebUI, as an admin (make open):
+Done in LiteLLM and .env. Now in Open WebUI, as an admin (./scripts/open.sh):
 
   1. Admin Panel > Users > +
        Name: $NAME    Email: anything unique, e.g. $KID@family.local    Role: user
@@ -105,5 +108,5 @@ Done in LiteLLM and .env. Now in Open WebUI, as an admin (make open):
        Access:        group $NAME only, never public (the preset needs it)
        Menu:          Hide Model (tidies $NAME's list)
   5. Admin Panel > Users > Groups > $NAME > Default Model: $NAME's AI Helper
-  6. make doctor, then log in as $NAME in a private window (docs/setup.md step 7).
+  6. ./scripts/doctor.sh, then log in as $NAME in a private window (docs/setup.md step 7).
 EOF

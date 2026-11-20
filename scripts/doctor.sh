@@ -52,6 +52,8 @@ else
   report <<< "ok|.env has the required values"
 fi
 [[ "$(envval LITELLM_MASTER_KEY)" == sk-* ]] || report <<< "fail|LITELLM_MASTER_KEY must start with sk- (.env)"
+mode=$(ls -l .env | cut -c1-10)
+[[ "${mode:4:6}" == *r* ]] && report <<< "warn|.env is readable by other users ($mode) and holds every API key: chmod 600 .env"
 docker compose config -q 2>/dev/null || report <<< "fail|docker compose config fails: run it to see why"
 
 PROFILES=",$(envval COMPOSE_PROFILES),"
@@ -77,9 +79,9 @@ for s in $expected; do
   health=$(printf '%s' "$line" | cut -d'|' -f3)
   image=$(printf '%s' "$line" | cut -d'|' -f4)
   if [[ "$state" != running ]]; then
-    report <<< "fail|$s isn't running: make up, then make logs S=$s"
+    report <<< "fail|$s isn't running: docker compose up -d --wait, then docker compose logs $s"
   elif [[ -n "$health" && "$health" != healthy ]]; then
-    report <<< "fail|$s is $health: make logs S=$s"
+    report <<< "fail|$s is $health: docker compose logs $s"
   else
     report <<< "ok|$s ($image)"
   fi
@@ -171,9 +173,9 @@ for k in sorted(keys, key=lambda k: k.get("key_alias") or ""):
         continue
     problems = []
     if not allowed:
-        problems.append("fail|can use every model, parent models included (make set-models)")
+        problems.append("fail|can use every model, parent models included (./scripts/set-kid-models.sh)")
     if set(allowed) & parent_models:
-        problems.append(f"fail|has parent models: {', '.join(sorted(set(allowed) & parent_models))} (make set-models)")
+        problems.append(f"fail|has parent models: {', '.join(sorted(set(allowed) & parent_models))} (./scripts/set-kid-models.sh)")
     unknown = [m for m in allowed if m not in models]
     if unknown:
         problems.append(f"warn|lists models not in litellm/config.yaml: {', '.join(unknown)}")
@@ -184,11 +186,11 @@ for k in sorted(keys, key=lambda k: k.get("key_alias") or ""):
         problems.append(f"fail|age prompt fails, so every request is rejected: {e}")
         age = "?"
     if not budget:
-        problems.append("warn|has no budget (make set-budget)")
+        problems.append("warn|has no budget (./scripts/set-kid-budget.sh)")
     elif spend / budget >= 0.8:
-        problems.append(f"warn|has used {spend / budget:.0%} of ${budget:g} (make spending)")
+        problems.append(f"warn|has used {spend / budget:.0%} of ${budget:g} (./scripts/spending.sh)")
     if alias not in connected:
-        problems.append("warn|isn't used by any Open WebUI connection (make add-kid, or delete the key)")
+        problems.append("warn|isn't used by any Open WebUI connection (./scripts/add-kid.sh, or delete the key)")
     for p in problems:
         level, msg = p.split("|", 1)
         print(f"{level}|Kid key {alias}: {msg}")
@@ -208,7 +210,7 @@ def search(q, safe, engines=""):
 try:
     r = search("photosynthesis", "2")
 except Exception as e:
-    print(f"fail|SearXNG doesn't answer: {e} (make logs S=searxng)")
+    print(f"fail|SearXNG doesn't answer: {e} (docker compose logs searxng)")
     raise SystemExit
 results = r.get("results", [])
 engines = sorted({e for x in results for e in x.get("engines", [])})
@@ -328,11 +330,11 @@ PY
 report <<< "section|Backups"
 latest=$(ls -1d backups/20*/ 2>/dev/null | tail -1)
 if [[ -z "$latest" ]]; then
-  report <<< "warn|No backups yet: make backup (and schedule it, docs/setup.md step 10)"
+  report <<< "warn|No backups yet: ./scripts/backup.sh (and schedule it, docs/setup.md step 10)"
 elif [[ -n "$(find backups -maxdepth 1 -type d -name '20*' -mtime -7 2>/dev/null | head -1)" ]]; then
   report <<< "ok|Latest: ${latest%/}"
 else
-  report <<< "warn|Latest backup is over a week old: ${latest%/} (make backup)"
+  report <<< "warn|Latest backup is over a week old: ${latest%/} (./scripts/backup.sh)"
 fi
 
 finish

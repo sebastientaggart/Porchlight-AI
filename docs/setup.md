@@ -4,15 +4,30 @@
 
 ```bash
 cp .env.example .env
-# fill in WEBUI_SECRET_KEY, LITELLM_MASTER_KEY (must start with sk-), POSTGRES_PASSWORD,
-# ADMIN_UI_USERNAME, ADMIN_UI_PASSWORD, ANTHROPIC_API_KEY
-# (and OPENROUTER_API_KEY if you want non-Anthropic models; see openrouter.md)
+chmod 600 .env                # it holds every API key
+# Required: WEBUI_SECRET_KEY, LITELLM_MASTER_KEY (must start with sk-), POSTGRES_PASSWORD,
+#   ADMIN_UI_USERNAME, ADMIN_UI_PASSWORD, ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_PARENTS
+#   (the same value as ANTHROPIC_API_KEY is fine; see "Parent models" below)
+# Optional: COMPOSE_PROFILES (guard, search); SEARXNG_SECRET and ENABLE_WEB_SEARCH for
+#   search (step 9); OPENROUTER_API_KEY and OPENROUTER_API_KEY_PARENTS (openrouter.md)
 docker compose up -d --wait   # returns once everything is healthy
 ```
 
-Open `http://<host>:3000`. **The first account created becomes the admin.** Make it yours, immediately.
+Open `http://<host>:3000` and create your account. **The first account created becomes the admin**, and until it exists, anyone who can reach that port can sign up and take it. Do it right after the first start. If you can't (or the host is reachable beyond your own network), start with `OPENWEBUI_BIND=127.0.0.1` in `.env` and reach it through `ssh -L 3000:localhost:3000 <host>` until your account exists.
 
-LiteLLM takes up to about 30 seconds to start (it runs database migrations first). `--wait` covers that; without it, the scripts below fail with `Connection refused` until LiteLLM shows as healthy in `docker compose ps`.
+The first start takes a few minutes: Open WebUI downloads its document-search model (about 2 minutes) and LiteLLM runs database migrations (about 30 seconds). `--wait` covers both; without it, the scripts below fail with `Connection refused` until everything shows as healthy in `docker compose ps`. Later starts take seconds.
+
+`make doctor` (or `./scripts/doctor.sh`) checks the setup at any point. Right now it reports the missing connection; that's step 2.
+
+### On Unraid (Compose Manager)
+
+Unraid has no `make`; run the scripts directly (`./scripts/doctor.sh`, `./scripts/add-kid.sh`, ...).
+
+- **Clone into appdata**, e.g. `/mnt/user/appdata/porchlight-ai`, not into Compose Manager's folder on the flash drive: FAT32 drops the scripts' permissions, `backups/` would wear the flash, and `.env` holds your API keys.
+- **Add it as a stack pointing there**: Compose Manager > Add New Stack, name `porchlight-ai`, and under Advanced set the stack directory to the clone. The compose file, bind mounts, and `.env` are then used from the clone as-is.
+- **Match the project name.** Compose Manager turns `-`, `.`, and spaces in the stack name into `_`, so `porchlight-ai` runs as project `porchlight_ai`. Add `COMPOSE_PROJECT_NAME=porchlight_ai` to `.env`, or the scripts look for different containers and see nothing running.
+- **Compose Up doesn't wait.** After the first start, give it the few minutes above before running the scripts.
+- **UI Labels** (icons and WebUI links) go in an override file on the flash drive that the scripts don't read, so the next restart from a script would recreate the containers without them. Point `.env` at both files: `COMPOSE_FILE=docker-compose.yml:/boot/config/plugins/compose.manager/projects/porchlight-ai/docker-compose.override.yml` (the folder is the stack name).
 
 **Where settings live.** Open WebUI's admin settings (connections, features, default permissions) are set in `docker-compose.yml` and `.env`, and re-applied on every start. Changes in the admin UI work until the next restart, then revert, so make lasting changes in the files. Users, groups, group permissions, model presets, and functions are the exception: they live in Open WebUI's database and are managed in the UI. Details: [features.md](features.md).
 
@@ -26,19 +41,23 @@ Open WebUI only sees models through a connection, and every connection carries a
 
 Arguments: name (default `parent`), monthly budget in USD (default 10). The key can use every model and gets no age prompt. Don't paste the master key instead: anyone who got into your Open WebUI admin account would then control LiteLLM too, audit log included.
 
-Put the key in `.env` as the first connection (the template already has the URL and prefix):
+On a fresh `.env` the script puts the key in as the first connection and restarts. The template already has the URL and prefix, so it ends up as:
 
 ```bash
 OPENAI_API_BASE_URLS=http://litellm:4000/v1
-OPENAI_API_KEYS=sk-...the key from the script...
+OPENAI_API_KEYS=sk-...the new key...
 OPENAI_API_CONFIGS='{"0":{"prefix_id":"parent"}}'
 ```
 
-The URL is LiteLLM's Docker service name, not localhost. Then `docker compose up -d --wait`. You should now see `parent.claude-kids` and the other models. Base models are admin-only by default, so kids won't see these. Chat with each one, then check the whole path made it to the audit log:
+If `OPENAI_API_KEYS` already has keys, the script prints the new one instead; add it yourself, then `docker compose up -d --wait`. The URL is LiteLLM's Docker service name, not localhost.
+
+You should now see `parent.claude-kids` and the other models. Base models are admin-only by default, so kids won't see these. Chat with each one, then check the whole path made it to the audit log:
 
 ```bash
 ./scripts/review-logs.sh 5 parent
 ```
+
+LiteLLM writes the log in batches, so a chat takes up to about 20 seconds to show up. Empty right after chatting? Run it again.
 
 ### Parent models and the other parent
 

@@ -25,4 +25,4 @@ LEFT JOIN (
 WHERE t.key_alias IS NOT NULL
 ORDER BY who DESC, t.key_alias;
 SQL
-echo "Change a kid's budget: make set-budget (or ./scripts/set-kid-budget.sh <kid> <usd>)"
+echo "Change a kid's budget: ./scripts/set-kid-budget.sh <kid> <usd>"
